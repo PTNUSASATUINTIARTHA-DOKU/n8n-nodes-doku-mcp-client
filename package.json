@@ -1,0 +1,62 @@
+{
+    "name": "n8n-nodes-doku-mcp-client",
+    "version": "1.0.0",
+    "description": "DOKU MCP Client Official n8n node",
+    "license": "MIT",
+    "homepage": "https://www.doku.com",
+    "keywords": [
+        "n8n-community-node-package",
+        "doku-mcp-client",
+        "payment-gateway-mcp-client",
+        "indonesia-payment-gateway-mcp-client",
+        "n8n-nodes-doku-mcp-client"
+    ],
+    "author": {
+        "name": "Syahrul Fathi",
+        "email": "syahrul.fathi@doku.com"
+    },
+    "repository": {
+        "type": "git",
+        "url": ""
+    },
+    "scripts": {
+        "build": "n8n-node build",
+        "build:watch": "tsc --watch",
+        "dev": "n8n-node dev",
+        "lint": "n8n-node lint",
+        "lint:fix": "n8n-node lint --fix",
+        "release": "n8n-node release",
+        "prepublishOnly": "n8n-node prerelease"
+    },
+    "files": [
+        "dist"
+    ],
+    "n8n": {
+        "n8nNodesApiVersion": 1,
+        "credentials": [],
+        "nodes": [
+            "dist/nodes/McpClientTool/McpClientTool.node.js"
+        ]
+    },
+    "devDependencies": {
+        "@n8n/node-cli": "*",
+        "@types/node": "^24.6.0",
+        "eslint": "9.32.0",
+        "prettier": "3.6.2",
+        "release-it": "^19.0.4",
+        "typescript": "5.9.2"
+    },
+    "peerDependencies": {
+        "n8n-workflow": "*"
+    },
+    "overrides": {
+        "change-case": "4.1.2"
+    },
+    "dependencies": {
+        "@langchain/core": "^0.3.78",
+        "@modelcontextprotocol/sdk": "^1.18.2",
+        "@n8n/client-oauth2": "^0.30.0",
+        "langchain": "^0.3.35",
+        "oauth-1.0a": "^2.2.6"
+    }
+}

@@ -3,25 +3,17 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
-import { ClientOAuth2 } from '@n8n/client-oauth2';
 import { convertJsonSchemaToZod } from '../../utils/schemaParsing';
-import { createHmac } from 'crypto';
 import { Toolkit } from 'langchain/agents';
 import {
-	type IRequestOptionsSimplified,
 	createResultError,
 	createResultOk,
-	jsonParse,
 	type IDataObject,
-	type IExecuteFunctions,
 	type Result,
 } from 'n8n-workflow';
-import clientOAuth1 from 'oauth-1.0a';
-import type { Token } from 'oauth-1.0a';
 import { z } from 'zod';
 
 import type {
-	McpAuthenticationOption,
 	McpServerTransport,
 	McpTool,
 	McpToolIncludeMode,
@@ -227,96 +219,5 @@ export async function connectMcpClient({
 		return createResultOk(client);
 	} catch (error) {
 		return createResultError({ type: 'connection', error });
-	}
-}
-
-export async function getAuthHeaders(
-	ctx: Pick<IExecuteFunctions, 'getCredentials' | 'logger'>,
-	authentication: McpAuthenticationOption,
-	genericCredentialType?: string,
-	itemIndex?: number,
-): Promise<{ headers?: Record<string, string> }> {
-	switch (authentication) {
-		case 'genericCredentialType': {
-			if (!genericCredentialType) return {};
-			const credentials = await ctx.getCredentials(genericCredentialType, itemIndex);
-			ctx.logger.error(JSON.stringify(credentials));
-			if (!credentials) {
-				return {};
-			}
-
-			if (genericCredentialType === 'httpBasicAuth') {
-				const username = credentials.user as string;
-				const password = credentials.password as string;
-				return { headers: { Authorization: `Basic ${btoa(`${username}:${password}`)}` } };
-			} else if (genericCredentialType === 'httpBearerAuth') {
-				const token = credentials.token as string;
-				return { headers: { Authorization: `Bearer ${token}` } };
-			} else if (genericCredentialType === 'httpHeaderAuth') {
-				const result: Record<string, string> = {};
-				result[credentials.name as string] = credentials.value as string;
-				return { headers: result };
-			} else if (genericCredentialType === 'httpCustomAuth') {
-				const customAuth = jsonParse<IRequestOptionsSimplified>(
-					(credentials.json as string) || '{}',
-					{ errorMessage: 'Invalid Custom Auth JSON' },
-				);
-				const result = { ...customAuth.headers } as Record<string, string>;
-				return { headers: result };
-			} else if (genericCredentialType === 'oAuth1Api') {
-				const oauth = new clientOAuth1({
-					consumer: {
-						key: credentials.consumerKey as string,
-						secret: credentials.consumerSecret as string,
-					},
-					signature_method: credentials.signatureMethod as string,
-					hash_function(base, key) {
-						let algorithm: string;
-						switch (credentials.signatureMethod) {
-							case 'HMAC-SHA256':
-								algorithm = 'sha256';
-								break;
-							case 'HMAC-SHA512':
-								algorithm = 'sha512';
-								break;
-							default:
-								algorithm = 'sha1';
-								break;
-						}
-						return createHmac(algorithm, key).update(base).digest('base64');
-					},
-				});
-				const oauthTokenData = credentials.oauthTokenData as IDataObject;
-
-				const token: Token = {
-					key: oauthTokenData.oauth_token as string,
-					secret: oauthTokenData.oauth_token_secret as string,
-				};
-				return oauth.toHeader(
-					// todo: how does oauth1 work?
-					oauth.authorize({} as unknown as clientOAuth1.RequestOptions, token),
-				) as unknown as Record<string, string>;
-			} else if (genericCredentialType === 'oAuth2Api') {
-				const oauth2Client = new ClientOAuth2({
-					clientId: credentials.clientId as string,
-					clientSecret: credentials.clientSecret as string,
-					accessTokenUri: credentials.accessTokenUrl as string,
-					authentication: credentials.authentication as 'header' | 'body',
-					scopes: (credentials.scope as string)?.split(','),
-					ignoreSSLIssues: credentials.ignoreSSLIssues as boolean,
-				});
-
-				const token = await oauth2Client.credentials.getToken();
-				if (token.accessToken) {
-					return { headers: { Authorization: `Bearer ${token.accessToken}` } };
-				}
-			}
-			return {};
-		}
-		case 'none':
-			return {};
-		default: {
-			return {};
-		}
 	}
 }

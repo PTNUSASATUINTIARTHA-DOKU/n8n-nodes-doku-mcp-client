@@ -5,5 +5,3 @@ export type McpTool = { name: string; description?: string; inputSchema: JSONSch
 export type McpServerTransport = 'sse' | 'httpStreamable';
 
 export type McpToolIncludeMode = 'all' | 'selected' | 'except';
-
-export type McpAuthenticationOption = 'none' | 'genericCredentialType';

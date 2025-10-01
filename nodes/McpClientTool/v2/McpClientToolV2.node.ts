@@ -11,12 +11,11 @@ import { logWrapper } from '../../utils/logWrapper';
 import { getConnectionHintNoticeField } from '../../utils/sharedFields';
 
 import { getTools } from './loadOptions';
-import type { McpServerTransport, McpAuthenticationOption, McpToolIncludeMode } from './types';
+import type { McpServerTransport, McpToolIncludeMode } from './types';
 import {
 	connectMcpClient,
 	createCallTool,
 	getAllTools,
-	getAuthHeaders,
 	getSelectedTools,
 	mcpToolToDynamicTool,
 } from './utils';
@@ -31,14 +30,7 @@ export class McpClientToolV2 implements INodeType {
 			defaults: {},
 			inputs: [],
 			outputs: [{ type: NodeConnectionTypes.AiTool, displayName: 'Tools' }],
-			credentials: [
-				{ name: 'httpBasicAuth', required: false },
-				{ name: 'httpBearerAuth', required: false },
-				{ name: 'httpHeaderAuth', required: false },
-				{ name: 'httpCustomAuth', required: false },
-				{ name: 'oAuth1Api', required: false },
-				{ name: 'oAuth2Api', required: false },
-			],
+			credentials: [],
 			properties: [
 				getConnectionHintNoticeField([NodeConnectionTypes.AiAgent]),
 				{
@@ -69,36 +61,26 @@ export class McpClientToolV2 implements INodeType {
 				},
 
 				{
-					displayName: 'Authentication',
-					name: 'authentication',
-					type: 'options',
-					options: [
-						{
-							name: 'Generic Credential Type',
-							value: 'genericCredentialType',
-							description: 'Fully customizable. Choose between basic, header, OAuth2, etc.',
-						},
-						{
-							name: 'None',
-							value: 'none',
-						},
-					],
-					default: 'none',
-					description: 'The way to authenticate with your endpoint',
+					displayName: 'Client ID',
+					name: 'clientId',
+					type: 'string',
+					required: true,
+					default: '',
+					placeholder: 'MCH-0106-7015945058936',
+					description: 'Your DOKU Client ID',
 				},
 
 				{
-					displayName: 'Generic Auth Type',
-					name: 'genericAuthType',
-					type: 'credentialsSelect',
+					displayName: 'API Key',
+					name: 'apiKey',
+					type: 'string',
+					typeOptions: {
+						password: true,
+					},
 					required: true,
 					default: '',
-					credentialTypes: ['has:genericAuth'],
-					displayOptions: {
-						show: {
-							authentication: ['genericCredentialType'],
-						},
-					},
+					placeholder: 'doku_key_test_...',
+					description: 'Your DOKU API Key',
 				},
 				{
 					displayName: 'Tools to Include',
@@ -168,15 +150,8 @@ export class McpClientToolV2 implements INodeType {
 	};
 
 	async supplyData(this: ISupplyDataFunctions, itemIndex: number): Promise<SupplyData> {
-		const authentication = this.getNodeParameter(
-			'authentication',
-			itemIndex,
-			'none',
-		) as McpAuthenticationOption;
-
 		const node = this.getNode();
 		const timeout = this.getNodeParameter('options.timeout', itemIndex, 60000) as number;
-		const genericCredentialType = this.getNodeParameter('genericAuthType', 0) as string;
 
 		const serverTransport = this.getNodeParameter(
 			'serverTransport',
@@ -184,27 +159,29 @@ export class McpClientToolV2 implements INodeType {
 		) as McpServerTransport;
 		const endpointUrl = this.getNodeParameter('endpointUrl', itemIndex) as string;
 
-		if (authentication !== 'none') {
-			const domain = new URL(endpointUrl).hostname;
-			if (domain.includes('{') && domain.includes('}')) {
-				throw new NodeOperationError(
-					this.getNode(),
-					"Can't use a placeholder for the domain when using authentication",
-					{
-						itemIndex,
-						description:
-							'This is for security reasons, to prevent the model accidentally sending your credentials to an unauthorized domain',
-					},
-				);
-			}
+		const domain = new URL(endpointUrl).hostname;
+		if (domain.includes('{') && domain.includes('}')) {
+			throw new NodeOperationError(
+				this.getNode(),
+				"Can't use a placeholder for the domain when using authentication",
+				{
+					itemIndex,
+					description:
+						'This is for security reasons, to prevent the model accidentally sending your credentials to an unauthorized domain',
+				},
+			);
 		}
 
-		const { headers } = await getAuthHeaders(
-			this,
-			authentication,
-			genericCredentialType,
-			itemIndex,
-		);
+		// Build DOKU authentication headers
+		const clientId = this.getNodeParameter('clientId', itemIndex) as string;
+		const apiKey = this.getNodeParameter('apiKey', itemIndex) as string;
+
+		// Create Basic Auth header with API Key and Client-Id header
+		const base64ApiKey = Buffer.from(`${apiKey}:`).toString('base64');
+		const headers = {
+			'Authorization': `Basic ${base64ApiKey}`,
+			'Client-Id': clientId,
+		};
 		const client = await connectMcpClient({
 			serverTransport,
 			endpointUrl,

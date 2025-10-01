@@ -43,32 +43,19 @@ To use this node, you need:
 
 1. **DOKU Merchant Account** - Sign up at [DOKU](https://doku.com) to become a merchant
 2. **API Credentials** - Generate your API keys from the DOKU merchant dashboard:
-   - Client ID
-   - API Key (Secret Key)
+   - Client ID (e.g., `BRN-...`)
+   - API Key (e.g., `doku_key_test_...`)
 
 ### Setting up Authentication
 
-This node supports multiple authentication methods through n8n's credential system:
+Authentication is built directly into the node. Simply provide:
+- **Client ID**: Your DOKU Client ID
+- **API Key**: Your DOKU API Key (will be securely encrypted)
 
-1. **Header Auth** (Recommended for DOKU MCP Server)
-   - Header Name: `Authorization`
-   - Header Value: `Basic {base64_encoded_credentials}`
-   - Also set `Client-Id` header with your DOKU Client ID
-
-2. **Basic Auth** - Use your DOKU API credentials directly
-
-3. **Bearer Token** - If using token-based authentication
-
-4. **Custom Auth (JSON)** - For advanced authentication scenarios
-
-### Encoding API Keys
-
-DOKU MCP Server requires base64-encoded credentials:
-
-```bash
-# Encode your API key (note the colon at the end)
-echo -n "your-api-key:" | base64
-```
+The node automatically handles the authentication by:
+- Base64-encoding your API key
+- Setting the `Authorization: Basic {encoded_key}` header
+- Including the `Client-Id` header with your Client ID
 
 ## Compatibility
 
@@ -83,24 +70,21 @@ echo -n "your-api-key:" | base64
 1. Add the **DOKU MCP Client Tool** node to your workflow
 2. Configure the connection:
    - **Endpoint**: Enter your DOKU MCP Server endpoint (e.g., `https://mcp.doku.com/sse`)
-   - **Server Transport**: Choose between SSE or HTTP Streamable
-   - **Authentication**: Select your authentication method
-   - **Credential Type**: Choose the appropriate credential type
-   - **Credential**: Select or create your DOKU credentials
+   - **Server Transport**: Choose between "HTTP Streamable" (recommended) or "Server Sent Events (Deprecated)"
+   - **Client ID**: Enter your DOKU Client ID
+   - **API Key**: Enter your DOKU API Key (will be masked for security)
 
 3. Connect the node to an **AI Agent** node in n8n
 4. The agent will automatically have access to all DOKU payment tools
 
 ### Example Configuration
 
-**Endpoint**: `https://mcp.doku.com/sse`
-**Server Transport**: Server Sent Events
-**Authentication**: Generic Credential Type
-**Credential Type**: Header Auth
-
-Configure your credentials with:
-- `Authorization` header: `Basic {your_base64_encoded_api_key}`
-- `Client-Id` header: `{your_doku_client_id}`
+```
+Endpoint: https://mcp.doku.com/sse
+Server Transport: HTTP Streamable
+Client ID: MCH-0106-7015945058936
+API Key: doku_key_test_xxxxxxxxxxxxxxxxx
+```
 
 ### Example Workflow
 

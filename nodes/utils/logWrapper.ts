@@ -1,13 +1,16 @@
+import type { DynamicStructuredTool } from '@langchain/core/tools';
 import type { ISupplyDataFunctions } from 'n8n-workflow';
 
 // Wrap a dynamic tool so we log before/after execution.
-export function logWrapper<T extends { name: string; func?: (...args: any[]) => any }>(
-	tool: T,
+export function logWrapper(
+	tool: DynamicStructuredTool,
 	ctx?: Pick<ISupplyDataFunctions, 'logger'>,
-): T {
+): DynamicStructuredTool {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const original = (tool as any).func;
 	if (typeof original !== 'function') return tool;
-	(tool as any).func = async (...args: any[]) => {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	(tool as any).func = async (...args: unknown[]) => {
 		try {
 			ctx?.logger?.debug?.(`MCP tool ${tool.name} start`);
 			const res = await original(...args);

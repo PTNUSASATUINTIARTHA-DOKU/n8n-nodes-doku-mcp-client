@@ -9,6 +9,7 @@ import {
 	createResultError,
 	createResultOk,
 	type IDataObject,
+	type Logger,
 	type Result,
 } from 'n8n-workflow';
 import { z } from 'zod';
@@ -75,16 +76,30 @@ export const getErrorDescriptionFromToolCall = (result: unknown): string | undef
 };
 
 export const createCallTool =
-	(name: string, client: Client, timeout: number, onError: (error: string) => void) =>
+	(
+		name: string,
+		client: Client,
+		timeout: number,
+		onError: (error: string) => void,
+		logger?: Logger,
+	) =>
 	async (args: IDataObject) => {
 		let result: Awaited<ReturnType<Client['callTool']>>;
 
 		function handleError(error: unknown) {
 			const errorDescription =
 				getErrorDescriptionFromToolCall(error) ?? `Failed to execute tool "${name}"`;
+			logger?.error?.(`DOKU MCP Server Error: Tool "${name}" failed`, { error, args });
 			onError(errorDescription);
 			return errorDescription;
 		}
+
+		// Log the request to DOKU MCP Server
+		logger?.info?.(`DOKU MCP Server Request: Calling tool "${name}"`, {
+			tool: name,
+			arguments: args,
+			timestamp: new Date().toISOString(),
+		});
 
 		try {
 			result = await client.callTool({ name, arguments: args }, CompatibilityCallToolResultSchema, {
@@ -97,6 +112,22 @@ export const createCallTool =
 		if (result.isError) {
 			return handleError(result);
 		}
+
+		// Log successful response from DOKU MCP Server
+		let responseData: unknown;
+		if (result.toolResult !== undefined) {
+			responseData = result.toolResult;
+		} else if (result.content !== undefined) {
+			responseData = result.content;
+		} else {
+			responseData = result;
+		}
+
+		logger?.info?.(`DOKU MCP Server Response: Tool "${name}" succeeded`, {
+			tool: name,
+			response: responseData,
+			timestamp: new Date().toISOString(),
+		});
 
 		if (result.toolResult !== undefined) {
 			return result.toolResult;
@@ -117,6 +148,15 @@ export function mcpToolToDynamicTool(
 		throw new Error('Invalid MCP tool: missing name');
 	}
 
+	// Ensure tool name is valid (no special characters that could confuse LLM)
+	const toolName = tool.name.trim();
+	if (!toolName) {
+		throw new Error('Invalid MCP tool: empty name');
+	}
+
+	// Ensure tool has a meaningful description
+	const description = tool.description?.trim() || `Execute ${toolName} tool`;
+
 	const rawSchema = convertJsonSchemaToZod(tool.inputSchema);
 
 	// Ensure we always have an object schema for structured tools
@@ -124,11 +164,10 @@ export function mcpToolToDynamicTool(
 		rawSchema instanceof z.ZodObject ? rawSchema : z.object({ value: rawSchema });
 
 	return new DynamicStructuredTool({
-		name: tool.name,
-		description: tool.description ?? '',
+		name: toolName,
+		description,
 		schema: objectSchema,
 		func: onCallTool,
-		metadata: { isFromToolkit: true },
 	});
 }
 

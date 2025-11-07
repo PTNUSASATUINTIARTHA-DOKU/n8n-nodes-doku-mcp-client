@@ -33,7 +33,9 @@
     ],
     "n8n": {
         "n8nNodesApiVersion": 1,
-        "credentials": [],
+        "credentials": [
+            "dist/credentials/DokuMcpServerApi.credentials.js"
+        ],
         "nodes": [
             "dist/nodes/McpClientTool/McpClientTool.node.js"
         ]

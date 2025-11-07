@@ -9,12 +9,13 @@ import { connectMcpClient, getAllTools } from './utils';
 
 export async function getTools(this: ILoadOptionsFunctions): Promise<INodePropertyOptions[]> {
 	const node = this.getNode();
-	const serverTransport = this.getNodeParameter('serverTransport') as McpServerTransport;
-	const endpointUrl = this.getNodeParameter('endpointUrl') as string;
 
-	// Build DOKU authentication headers
-	const clientId = this.getNodeParameter('clientId') as string;
-	const apiKey = this.getNodeParameter('apiKey') as string;
+	// Get credentials
+	const credentials = await this.getCredentials('dokuMcpServerApi');
+	const serverTransport = credentials.serverTransport as McpServerTransport;
+	const endpointUrl = credentials.endpointUrl as string;
+	const clientId = credentials.clientId as string;
+	const apiKey = credentials.apiKey as string;
 
 	// Create Basic Auth header with API Key and Client-Id header
 	const base64ApiKey = Buffer.from(`${apiKey}:`).toString('base64');

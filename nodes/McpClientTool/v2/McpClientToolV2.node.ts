@@ -30,79 +30,35 @@ export class McpClientToolV2 implements INodeType {
 			defaults: {},
 			inputs: [],
 			outputs: [{ type: NodeConnectionTypes.AiTool, displayName: 'Tools' }],
-			credentials: [],
+			credentials: [
+				{
+					name: 'dokuMcpServerApi',
+					required: true,
+				},
+			],
 			properties: [
 				getConnectionHintNoticeField([NodeConnectionTypes.AiAgent]),
-				{
-					displayName: 'Endpoint',
-					name: 'endpointUrl',
-					type: 'string',
-					description: 'DOKU MCP server',
-					placeholder: 'e.g. https://mcp.doku.com/sse',
-					default: '',
-					required: true,
-				},
-				{
-					displayName: 'Server Transport',
-					name: 'serverTransport',
-					type: 'options',
-					options: [
-						{
-							name: 'Server Sent Events (Deprecated)',
-							value: 'sse',
-						},
-						{
-							name: 'HTTP Streamable',
-							value: 'httpStreamable',
-						},
-					],
-					default: 'sse',
-					description: 'The transport used by your endpoint',
-				},
-
-				{
-					displayName: 'Client ID',
-					name: 'clientId',
-					type: 'string',
-					required: true,
-					default: '',
-					placeholder: 'BRN-...',
-					description: 'Your DOKU Client ID',
-				},
-
-				{
-					displayName: 'API Key',
-					name: 'apiKey',
-					type: 'string',
-					typeOptions: {
-						password: true,
-					},
-					required: true,
-					default: '',
-					placeholder: 'doku_key_test_...',
-					description: 'Your DOKU API Key',
-				},
 				{
 					displayName: 'Tools to Include',
 					name: 'include',
 					type: 'options',
-					description: 'How to select the tools you want to be exposed to the AI Agent',
-					default: 'all',
+					description: 'How to select the tools you want to be exposed to the AI Agent. Important: Most LLMs can handle up to 16 tools maximum. For best performance, use 5-10 focused tools via "Selected" mode.',
+					default: 'selected',
 					options: [
 						{
 							name: 'All',
 							value: 'all',
-							description: 'Also include all unchanged fields from the input',
+							description: 'Include all tools from server (not recommended if server has 17+ tools)',
 						},
 						{
 							name: 'Selected',
 							value: 'selected',
-							description: 'Also include the tools listed in the parameter "Tools to Include"',
+							description: 'Include only specific tools (recommended - best AI Agent performance)',
 						},
 						{
 							name: 'All Except',
 							value: 'except',
-							description: 'Exclude the tools listed in the parameter "Tools to Exclude"',
+							description: 'Include all except specific tools (useful to stay under 17 tool limit)',
 						},
 					],
 				},
@@ -115,7 +71,6 @@ export class McpClientToolV2 implements INodeType {
 						'Choose from the list, or specify IDs using an <a href="https://docs.n8n.io/code/expressions/">expression</a>',
 					typeOptions: {
 						loadOptionsMethod: 'getTools',
-						loadOptionsDependsOn: ['endpointUrl'],
 					},
 					displayOptions: {
 						show: {
@@ -153,11 +108,12 @@ export class McpClientToolV2 implements INodeType {
 		const node = this.getNode();
 		const timeout = this.getNodeParameter('options.timeout', itemIndex, 60000) as number;
 
-		const serverTransport = this.getNodeParameter(
-			'serverTransport',
-			itemIndex,
-		) as McpServerTransport;
-		const endpointUrl = this.getNodeParameter('endpointUrl', itemIndex) as string;
+		// Get credentials
+		const credentials = await this.getCredentials('dokuMcpServerApi', itemIndex);
+		const serverTransport = credentials.serverTransport as McpServerTransport;
+		const endpointUrl = credentials.endpointUrl as string;
+		const clientId = credentials.clientId as string;
+		const apiKey = credentials.apiKey as string;
 
 		const domain = new URL(endpointUrl).hostname;
 		if (domain.includes('{') && domain.includes('}')) {
@@ -171,10 +127,6 @@ export class McpClientToolV2 implements INodeType {
 				},
 			);
 		}
-
-		// Build DOKU authentication headers
-		const clientId = this.getNodeParameter('clientId', itemIndex) as string;
-		const apiKey = this.getNodeParameter('apiKey', itemIndex) as string;
 
 		// Create Basic Auth header with API Key and Client-Id header
 		const base64ApiKey = Buffer.from(`${apiKey}:`).toString('base64');
@@ -216,13 +168,44 @@ export class McpClientToolV2 implements INodeType {
 		const includeTools = this.getNodeParameter('includeTools', itemIndex, []) as string[];
 		const excludeTools = this.getNodeParameter('excludeTools', itemIndex, []) as string[];
 
+		this.logger.info(`Tool selection mode: ${mode}`, {
+			mode,
+			includeTools: includeTools.length > 0 ? includeTools : 'none',
+			excludeTools: excludeTools.length > 0 ? excludeTools : 'none',
+		});
+
 		const allTools = await getAllTools(client.result);
+		this.logger.info(`Retrieved ${allTools.length} tools from MCP Server`);
+		allTools.forEach(t => {
+			this.logger.info(`  MCP Tool: ${t.name} - ${t.description?.substring(0, 80) || 'NO DESCRIPTION'}${(t.description?.length || 0) > 80 ? '...' : ''}`);
+		});
+
 		const mcpTools = getSelectedTools({
 			tools: allTools,
 			mode,
 			includeTools,
 			excludeTools,
 		});
+
+		this.logger.info(`Selected ${mcpTools.length} tools after filtering`, {
+			selectedToolNames: mcpTools.map(t => t.name),
+		});
+
+		// Warn if too many tools are being exposed
+		if (mcpTools.length >= 17) {
+			this.logger.warn(
+				`⚠️  ${mcpTools.length} tools are being exposed to the AI Agent. ` +
+				`This exceeds the recommended limit and may cause the AI Agent to fail. ` +
+				`Most LLMs can only handle up to 16 tools effectively. ` +
+				`Please use "Selected" or "All Except" mode to reduce the tool count.`,
+			);
+		} else if (mcpTools.length > 12) {
+			this.logger.warn(
+				`⚠️  ${mcpTools.length} tools are being exposed to the AI Agent. ` +
+				`While this may work, AI Agents perform best with 5-10 focused tools. ` +
+				`Consider using "Selected" mode for optimal reliability.`,
+			);
+		}
 
 		if (!mcpTools.length) {
 			return setError(
@@ -236,21 +219,50 @@ export class McpClientToolV2 implements INodeType {
 			return logWrapper(
 				mcpToolToDynamicTool(
 					tool,
-					createCallTool(tool.name, client.result, timeout, (errorMessage) => {
-						const error = new NodeOperationError(node, errorMessage, { itemIndex });
-						void this.addOutputData(NodeConnectionTypes.AiTool, itemIndex, error);
-						this.logger.error(`McpClientTool: Tool "${tool.name}" failed to execute`, { error });
-					}),
+					createCallTool(
+						tool.name,
+						client.result,
+						timeout,
+						(errorMessage) => {
+							const error = new NodeOperationError(node, errorMessage, { itemIndex });
+							void this.addOutputData(NodeConnectionTypes.AiTool, itemIndex, error);
+							this.logger.error(`McpClientTool: Tool "${tool.name}" failed to execute`, { error });
+						},
+						this.logger,
+					),
 				),
 				this,
 			);
 		});
 
-		this.logger.debug(`McpClientTool: Connected to MCP Server with ${tools.length} tools`);
+		this.logger.info(`McpClientTool: Connected to MCP Server with ${tools.length} tools`);
 
-		// Log tool names to verify they're valid
+		// Log tool names and descriptions to verify they're valid
 		const toolNames = tools.map(t => t.name);
 		this.logger.info(`Tool names: ${JSON.stringify(toolNames)}`);
+
+		// Log detailed tool information for debugging
+		const toolDetails = tools.map(t => ({
+			name: t.name,
+			description: t.description?.substring(0, 100) || 'No description',
+			hasSchema: !!t.schema,
+		}));
+		this.logger.info(`Tool details being passed to AI Agent (mode: ${mode}, total: ${tools.length})`);
+		toolDetails.forEach(detail => {
+			this.logger.info(`  - ${detail.name}: ${detail.description}${detail.description.length > 100 ? '...' : ''} [schema: ${detail.hasSchema}]`);
+		});
+
+		// Log a sample tool structure for debugging
+		if (tools.length > 0) {
+			const sampleTool = tools[0];
+			this.logger.info('Sample tool structure:', {
+				name: sampleTool.name,
+				description: sampleTool.description?.substring(0, 50),
+				hasFunc: typeof sampleTool.func === 'function',
+				hasSchema: !!sampleTool.schema,
+				schemaType: sampleTool.schema?.constructor?.name,
+			});
+		}
 
 		// Return tools directly instead of wrapped in toolkit to avoid AI Agent compatibility issues
 		return { response: tools, closeFunction: async () => await client.result.close() };

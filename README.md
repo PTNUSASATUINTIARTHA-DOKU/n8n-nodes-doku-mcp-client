@@ -69,7 +69,7 @@ The node automatically handles the authentication by:
 
 1. Add the **DOKU MCP Client Tool** node to your workflow
 2. Configure the connection:
-   - **Endpoint**: Enter your DOKU MCP Server endpoint (e.g., `https://mcp.doku.com/sse`)
+   - **Endpoint**: Enter your DOKU MCP Server endpoint (e.g., `https://mcp.doku.com/mcp`)
    - **Server Transport**: Choose between "HTTP Streamable" (recommended) or "Server Sent Events (Deprecated)"
    - **Client ID**: Enter your DOKU Client ID
    - **API Key**: Enter your DOKU API Key (will be masked for security)
@@ -80,7 +80,7 @@ The node automatically handles the authentication by:
 ### Example Configuration
 
 ```
-Endpoint: https://mcp.doku.com/sse
+Endpoint: https://mcp.doku.com/mcp
 Server Transport: HTTP Streamable
 Client ID: MCH-0106-7015945058936
 API Key: doku_key_test_xxxxxxxxxxxxxxxxx

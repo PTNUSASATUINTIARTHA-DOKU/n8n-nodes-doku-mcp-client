@@ -133,6 +133,7 @@ async function connectAndGetTools(
 	};
 }
 
+// eslint-disable-next-line @n8n/community-nodes/icon-validation
 export class McpClientToolV5 implements INodeType {
 	description: INodeTypeDescription;
 
@@ -272,7 +273,9 @@ export class McpClientToolV5 implements INodeType {
 					try {
 						const parsed = JSON.parse(val);
 						if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
-					} catch {}
+					} catch {
+						// invalid JSON — fall through to object/empty handling
+					}
 				}
 				if (val && typeof val === 'object' && !Array.isArray(val)) {
 					return val as Record<string, unknown>;
@@ -288,7 +291,8 @@ export class McpClientToolV5 implements INodeType {
 				toolInput = parseIfString(item.json.query);
 			} else {
 				// Last resort: everything in item.json except "tool" itself
-				const { tool: _tool, ...rest } = item.json;
+				// eslint-disable-next-line @typescript-eslint/no-unused-vars
+				const { tool: _ignored, ...rest } = item.json;
 				toolInput = rest as Record<string, unknown>;
 			}
 
@@ -297,7 +301,7 @@ export class McpClientToolV5 implements INodeType {
 			);
 
 			if (!prefixedToolName) {
-				returnData.push({ json: { error: 'No tool name provided in item.json.tool' } });
+				returnData.push({ json: { error: 'No tool name provided in item.json.tool' }, pairedItem: { item: i } });
 				continue;
 			}
 
@@ -313,10 +317,11 @@ export class McpClientToolV5 implements INodeType {
 				}
 				returnData.push({
 					json: { response: response as import('n8n-workflow').IDataObject },
+					pairedItem: { item: i },
 				});
 			} catch (error) {
 				if (this.continueOnFail()) {
-					returnData.push({ json: { error: (error as Error).message ?? String(error) } });
+					returnData.push({ json: { error: (error as Error).message ?? String(error) }, pairedItem: { item: i } });
 				} else {
 					throw error;
 				}

@@ -1,7 +1,11 @@
 import { DynamicStructuredTool, type DynamicStructuredToolInput } from '@langchain/core/tools';
+// eslint-disable-next-line import-x/no-unresolved
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createResultError, createResultOk, type IDataObject, type Result } from 'n8n-workflow';
 
@@ -87,11 +91,6 @@ export const createCallTool =
 		}
 
 		try {
-			// Log exactly what we're sending so mismatches are visible in n8n logs
-			console.log(
-				`[DOKU MCP] callTool "${name}" arguments:`,
-				JSON.stringify(args),
-			);
 			result = await client.callTool(
 				{ name, arguments: args },
 				CompatibilityCallToolResultSchema,

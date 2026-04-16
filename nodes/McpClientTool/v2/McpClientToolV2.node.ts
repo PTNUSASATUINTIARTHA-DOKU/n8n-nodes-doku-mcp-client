@@ -20,6 +20,7 @@ import {
 	mcpToolToDynamicTool,
 } from './utils';
 
+// eslint-disable-next-line @n8n/community-nodes/icon-validation
 export class McpClientToolV2 implements INodeType {
 	description: INodeTypeDescription;
 

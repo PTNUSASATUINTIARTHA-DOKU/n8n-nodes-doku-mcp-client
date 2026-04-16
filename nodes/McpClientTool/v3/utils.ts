@@ -1,7 +1,11 @@
 import { DynamicStructuredTool, type DynamicStructuredToolInput } from '@langchain/core/tools';
+// eslint-disable-next-line import-x/no-unresolved
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import {
 	createResultError,
@@ -164,11 +168,12 @@ export function mcpToolToDynamicTool(
 			? { type: 'object', properties: {}, ...(tool.inputSchema as Record<string, unknown>) }
 			: { type: 'object', properties: {} };
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	return new DynamicStructuredTool({
 		name: toolName,
 		description,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		schema: schema as any,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		func: onCallTool as any,
 	});
 }

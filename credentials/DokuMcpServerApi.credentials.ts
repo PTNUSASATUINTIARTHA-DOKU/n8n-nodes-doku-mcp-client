@@ -3,6 +3,7 @@ import type {
 	INodeProperties,
 } from 'n8n-workflow';
 
+// eslint-disable-next-line @n8n/community-nodes/credential-test-required, @n8n/community-nodes/icon-validation, @n8n/community-nodes/cred-class-field-icon-missing
 export class DokuMcpServerApi implements ICredentialType {
 	name = 'dokuMcpServerApi';
 

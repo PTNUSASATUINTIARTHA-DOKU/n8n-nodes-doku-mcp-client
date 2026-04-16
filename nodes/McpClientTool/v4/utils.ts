@@ -1,7 +1,11 @@
 import { DynamicStructuredTool, type DynamicStructuredToolInput } from '@langchain/core/tools';
+// eslint-disable-next-line import-x/no-unresolved
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+// eslint-disable-next-line import-x/no-unresolved
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createResultError, createResultOk, type IDataObject, type Result } from 'n8n-workflow';
 
@@ -127,6 +131,7 @@ export function mcpToolToDynamicTool(
 	// zod instance — avoids instanceof mismatches when two zod copies are loaded.
 	// Destructure `type` out before spreading so a Python-serialized "None" from
 	// the server cannot overwrite our explicit `type: "object"`.
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
 	const { type: _type, ...rest } = (
 		tool.inputSchema && typeof tool.inputSchema === 'object' && !Array.isArray(tool.inputSchema)
 			? tool.inputSchema

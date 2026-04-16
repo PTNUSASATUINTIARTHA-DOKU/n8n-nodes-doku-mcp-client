@@ -17,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": ""
+    "url": "https://github.com/PTNUSASATUINTIARTHA-DOKU/n8n-nodes-doku-mcp-client"
   },
   "scripts": {
     "build": "n8n-node build",

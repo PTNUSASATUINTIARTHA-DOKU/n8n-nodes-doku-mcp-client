@@ -15,7 +15,6 @@ import { getConnectionHintNoticeField } from '../../utils/sharedFields';
 import { getTools } from './loadOptions';
 import type { McpServerTransport, McpTool, McpToolIncludeMode } from './types';
 import {
-	buildMcpToolName,
 	connectMcpClient,
 	createCallTool,
 	getAllTools,
@@ -24,16 +23,42 @@ import {
 	resolveOriginalToolName,
 } from './utils';
 
-// Load StructuredToolkit from n8n-core at runtime so we use the exact same
-// class instance n8n itself uses — required for the `instanceof` check in
-// getConnectedTools to pass when the AI Agent unwraps toolkits.
+// Lazily resolves to n8n's own Toolkit class so `instanceof` passes in getConnectedTools.
+//
+// The problem: our community node resolves @langchain/classic/agents to its own local
+// node_modules copy (a different JS object), so `new OurToolkit() instanceof n8nToolkit`
+// is always false. Without passing that check, getConnectedTools sets isFromToolkit=false
+// on every tool, causing createEngineRequests to omit `tool` from item.json, and
+// execute() never learns which tool to call → the agent loops until maxIterations.
+//
+// The fix: n8n loads @langchain/classic/agents before any workflow runs. Its module is
+// cached in require.cache under an absolute path. We search the cache for the entry
+// that contains a Toolkit export — this gives us n8n's exact Toolkit class, and
+// `instanceof` passes correctly.
+//
+// Lazy (called from supplyData) rather than module-level so the search always runs
+// AFTER n8n has finished loading its own packages and the cache is fully populated.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let StructuredToolkit: any;
-try {
-	// eslint-disable-next-line @typescript-eslint/no-require-imports
-	StructuredToolkit = require('n8n-core').StructuredToolkit;
-} catch {
-	StructuredToolkit = null;
+function buildMcpToolkitClass(): any {
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	let N8nToolkit: any = null;
+	for (const key of Object.keys(require.cache as Record<string, unknown>)) {
+		if (key.includes('@langchain/classic') && (key.includes('agents.js') || key.includes('agents/index'))) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			const mod = (require.cache as Record<string, any>)[key];
+			if (mod?.exports?.Toolkit) {
+				N8nToolkit = mod.exports.Toolkit;
+				break;
+			}
+		}
+	}
+	if (!N8nToolkit) return null;
+	return class McpToolkit extends N8nToolkit {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		constructor(public tools: any[]) {
+			super();
+		}
+	};
 }
 
 // Module-level helper — does NOT use `this` so it works from both execute()
@@ -239,7 +264,7 @@ export class McpClientToolV5 implements INodeType {
 
 	// execute() is called by AI Agent ToolsAgent V3 when it dispatches tool calls
 	// directly to connected tool nodes. Each input item has:
-	//   item.json.tool      — the prefixed tool name (e.g. "DOKU_MCP_Client_Tool_foo")
+	//   item.json.tool      — the original MCP tool name (e.g. "create_checkout")
 	//   item.json.toolInput — the arguments object
 	//
 	// IMPORTANT: n8n rebinds `this` to its own ExecuteContext when calling execute(),
@@ -257,7 +282,7 @@ export class McpClientToolV5 implements INodeType {
 				`McpClientTool execute() item[${i}].json = ${JSON.stringify(item.json)}`,
 			);
 
-			// item.json.tool is the PREFIXED name the LLM knows (e.g. "DOKU_MCP_Client_Tool_create_checkout")
+			// item.json.tool is the MCP tool name the LLM invoked (e.g. "create_checkout")
 			const prefixedToolName = item.json.tool as string | undefined;
 
 			// n8n's ToolsAgent may put args in different places depending on version:
@@ -411,10 +436,9 @@ export class McpClientToolV5 implements INodeType {
 
 		try {
 			const tools = mcpTools.map((tool) => {
-				const prefixedName = buildMcpToolName(node.name, tool.name);
 				return logWrapper(
 					mcpToolToDynamicTool(
-						{ ...tool, name: prefixedName },
+						tool,
 						createCallTool(
 							tool.name,
 							client.result,
@@ -431,15 +455,18 @@ export class McpClientToolV5 implements INodeType {
 
 			this.logger.debug(`McpClientTool: Supplying ${tools.length} tools to AI Agent`);
 
-			// Wrap in StructuredToolkit so n8n's getConnectedTools unwraps via instanceof
-			// and runs normalizeToolSchema on each tool with n8n's own zod instance.
-			if (StructuredToolkit) {
-				const toolkit = new StructuredToolkit();
-				// eslint-disable-next-line @typescript-eslint/no-explicit-any
-				(toolkit as any).tools = tools;
-				toolkit.getTools = () => tools;
+			// Wrap in a Toolkit subclass so n8n's getConnectedTools instanceof check passes.
+			// When it passes, getConnectedTools sets isFromToolkit=true on every tool, which
+			// causes ToolsAgent V3's createEngineRequests to include { tool: toolName } in
+			// item.json. Without this, item.json.tool is undefined in execute() and the agent
+			// loops forever hitting the maxIterations cap.
+			const McpToolkitClass = buildMcpToolkitClass();
+			if (McpToolkitClass) {
+				this.logger.debug('McpClientTool: Wrapping tools in McpToolkit (isFromToolkit=true path)');
+				const toolkit = new McpToolkitClass(tools);
 				return { response: toolkit, closeFunction: async () => await client.result.close() };
 			}
+			this.logger.warn('McpClientTool: Could not find n8n Toolkit class — falling back to plain array (isFromToolkit=false, tool dispatch may not work)');
 
 			return { response: tools, closeFunction: async () => await client.result.close() };
 		} catch (error) {

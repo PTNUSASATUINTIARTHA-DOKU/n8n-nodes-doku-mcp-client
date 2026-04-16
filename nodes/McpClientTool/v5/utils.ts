@@ -9,7 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
 import { createResultError, createResultOk, type IDataObject, type Result } from 'n8n-workflow';
 
-import { sanitizeJsonSchema } from '../../utils/schemaParsing';
+import { convertJsonSchemaToZod, sanitizeJsonSchema } from '../../utils/schemaParsing';
 import type { McpServerTransport, McpTool, McpToolIncludeMode } from './types';
 
 export async function getAllTools(client: Client, cursor?: string): Promise<McpTool[]> {
@@ -160,28 +160,30 @@ export function mcpToolToDynamicTool(
 	tool: McpTool,
 	onCallTool: DynamicStructuredToolInput['func'],
 ): DynamicStructuredTool {
-	// Sanitize the raw inputSchema so any Python-serialized "None" or other
-	// invalid type values are normalized before the schema reaches the LLM API.
-	// We then pass the sanitized JSON Schema as-is (not Zod) so that n8n's own
-	// normalizeToolSchema can convert it using n8n's internal zod instance —
-	// this avoids instanceof mismatches between our zod copy and n8n's zod copy.
+	// 1. Sanitize raw inputSchema (fixes Python-serialized "None" type values, etc.)
 	const sanitized = sanitizeJsonSchema(
 		tool.inputSchema && typeof tool.inputSchema === 'object' && !Array.isArray(tool.inputSchema)
 			? tool.inputSchema
 			: {},
 	);
-
-	// Ensure top-level type is always "object" (MCP spec requirement)
 	sanitized.type = 'object';
 	if (!sanitized.properties) {
 		sanitized.properties = {};
 	}
 
+	// 2. Convert to a real Zod schema.
+	// When tools are wrapped in McpToolkitClass, n8n's normalizeToolSchema is NOT
+	// called, so LangChain's zodToJsonSchema receives the schema directly. It throws
+	// "Cannot read properties of undefined (reading 'typeName')" on a raw JSON object.
+	// convertJsonSchemaToZod always returns a ZodObject so zodToJsonSchema works correctly
+	// and the LLM can see the tool definitions.
+	const zodSchema = convertJsonSchemaToZod(sanitized);
+
 	return new DynamicStructuredTool({
 		name: tool.name,
 		description: tool.description ?? '',
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		schema: sanitized as any,
+		schema: zodSchema as any,
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		func: onCallTool as any,
 	});

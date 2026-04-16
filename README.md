@@ -1,105 +1,163 @@
 # n8n-nodes-doku-mcp-client
 
-This is an n8n community node that lets you integrate DOKU payment services into your n8n workflows through the DOKU MCP (Model Context Protocol) Server.
+Official n8n community node for integrating **DOKU payment services** into your AI-powered workflows via the [Model Context Protocol (MCP)](https://modelcontextprotocol.io/).
 
-DOKU MCP Server provides a comprehensive set of payment-related tools and functionalities, enabling you to create payment links, manage transactions, handle customer data, and more - all within your AI-powered n8n workflows.
+Connect your n8n AI Agent to the DOKU MCP Server and let it autonomously create payment links, manage transactions, generate QRIS codes, and more — all through natural language.
 
 [n8n](https://n8n.io/) is a [fair-code licensed](https://docs.n8n.io/reference/license/) workflow automation platform.
 
-[Installation](#installation)
-[Operations](#operations)
-[Credentials](#credentials)
-[Compatibility](#compatibility)
-[Usage](#usage)
-[Resources](#resources)
+---
+
+## Table of Contents
+
+- [Installation](#installation)
+- [Credentials](#credentials)
+- [Usage](#usage)
+- [Available Tools](#available-tools)
+- [Tool Selection](#tool-selection)
+- [Compatibility](#compatibility)
+- [Resources](#resources)
+
+---
 
 ## Installation
 
-Follow the [installation guide](https://docs.n8n.io/integrations/community-nodes/installation/) in the n8n community nodes documentation.
-
-### Quick Install
+Install via the n8n UI (**Settings → Community Nodes → Install**) or directly with npm:
 
 ```bash
 npm install n8n-nodes-doku-mcp-client
 ```
 
-## Operations
+For full instructions see the [n8n community nodes installation guide](https://docs.n8n.io/integrations/community-nodes/installation/).
 
-The DOKU MCP Client Tool node connects to the DOKU MCP Server and provides access to 17+ payment-related tools, including:
-
-- **Payment Link Generation** - Create payment links for customers
-- **Checkout Link Creation** - Generate checkout pages with multiple payment methods
-- **Transaction Reporting** - Track and retrieve transaction details
-- **Customer Management** - Manage customer data and profiles
-- **Virtual Account Management** - Create and manage virtual account numbers
-- **QRIS Code Generation** - Generate QR codes for QRIS payments
-- And more...
-
-The specific tools available depend on your DOKU MCP Server configuration and will be dynamically loaded when the node connects to the server.
+---
 
 ## Credentials
 
-To use this node, you need:
+You will need a **DOKU Merchant Account**. Sign up at [doku.com](https://www.doku.com) to get your credentials.
 
-1. **DOKU Merchant Account** - Sign up at [DOKU](https://doku.com) to become a merchant
-2. **API Credentials** - Generate your API keys from the DOKU merchant dashboard:
-   - Client ID (e.g., `BRN-...`)
-   - API Key (e.g., `doku_key_test_...`)
+| Field | Description | Example |
+|---|---|---|
+| **Endpoint URL** | URL of your DOKU MCP Server | `https://mcp.doku.com/mcp` |
+| **Server Transport** | Connection protocol | `HTTP Streamable` (recommended) |
+| **Client ID** | Your DOKU merchant Client ID | `MCH-0106-XXXXXXXXX` |
+| **API Key** | Your DOKU API Key (stored encrypted) | `doku_key_test_...` |
 
-### Setting up Authentication
+The node handles authentication automatically:
+- Encodes your API Key as `Authorization: Basic <base64(apiKey:)>`
+- Passes your Client ID via the `Client-Id` header
 
-Authentication is built directly into the node. Simply provide:
-- **Client ID**: Your DOKU Client ID
-- **API Key**: Your DOKU API Key (will be securely encrypted)
+API keys are generated from the [DOKU Merchant Dashboard](https://dashboard.doku.com).
 
-The node automatically handles the authentication by:
-- Base64-encoding your API key
-- Setting the `Authorization: Basic {encoded_key}` header
-- Including the `Client-Id` header with your Client ID
-
-## Compatibility
-
-- **Minimum n8n version**: 1.0.0
-- **Node.js version**: 18.x or higher (20.x recommended)
-- **Tested with**: n8n 1.97.1
+---
 
 ## Usage
 
-### Basic Setup
+### 1. Add the node to an AI Agent workflow
 
-1. Add the **DOKU MCP Client Tool** node to your workflow
-2. Configure the connection:
-   - **Endpoint**: Enter your DOKU MCP Server endpoint (e.g., `https://mcp.doku.com/mcp`)
-   - **Server Transport**: Choose between "HTTP Streamable" (recommended) or "Server Sent Events (Deprecated)"
-   - **Client ID**: Enter your DOKU Client ID
-   - **API Key**: Enter your DOKU API Key (will be masked for security)
-
-3. Connect the node to an **AI Agent** node in n8n
-4. The agent will automatically have access to all DOKU payment tools
-
-### Example Configuration
+The **DOKU MCP Client Tool** node is a **tool-type node** — it must be connected to an **AI Agent** node via the `Tools` output port.
 
 ```
-Endpoint: https://mcp.doku.com/mcp
-Server Transport: HTTP Streamable
-Client ID: MCH-0106-7015945058936
-API Key: doku_key_test_xxxxxxxxxxxxxxxxx
+[Chat Trigger] → [AI Agent] ← [DOKU MCP Client Tool]
 ```
 
-### Example Workflow
+### 2. Configure the credential
 
-You can use this node in an AI Agent workflow to:
-- Process customer payment requests
-- Generate payment links dynamically
-- Check transaction status
-- Create QRIS codes for mobile payments
-- Manage virtual accounts
+Create a new **DOKU MCP Server API** credential with your endpoint URL, Client ID, and API Key.
 
-The AI Agent can intelligently use the appropriate DOKU tool based on the conversation context and user intent.
+### 3. Select which tools to expose
+
+Use the **Tools to Include** setting to control what the agent can do:
+
+| Mode | Description |
+|---|---|
+| **All** | Expose every tool the MCP server provides |
+| **Selected** | Expose only the tools you choose |
+| **All Except** | Expose everything except the tools you exclude |
+
+### 4. Run your workflow
+
+The AI Agent will automatically discover the available DOKU tools and invoke them when relevant. No additional configuration is required.
+
+---
+
+## Available Tools
+
+The DOKU MCP Server exposes **30 tools** across four categories. Tools are loaded dynamically at runtime — the exact set depends on your server configuration.
+
+### Checkout Payment (2 tools)
+
+| Tool | Description |
+|---|---|
+| `create_payment_link` | Generate a payment link without pre-filled customer data |
+| `create_checkout_link` | Generate a checkout link with customer data specified |
+
+### Direct Payment (18 tools)
+
+| Tool | Description |
+|---|---|
+| `get_merchant_payment_methods` | Retrieve activated payment methods for your merchant account |
+| `generate_payment_virtual_account` | Generate a Virtual Account number for bank transfer |
+| `update_payment_virtual_account` | Modify details of an existing Virtual Account |
+| `delete_payment_virtual_account` | Close or disable payment of an existing Virtual Account |
+| `generate_payment_qris` | Generate a QRIS code for direct payments |
+| `generate_payment_card_auth` | Perform 3D Secure (3DS) authentication for credit/debit cards |
+| `generate_payment_card_capture` | Capture a previously authorized card transaction |
+| `generate_payment_card_charge` | Charge a card transaction after successful 3DS authentication |
+| `generate_payment_ovo_auth` | Authenticate an OVO account before payment |
+| `generate_payment_ovo` | Generate an OVO e-Wallet payment using authCode |
+| `generate_payment_doku_ewallet_auth` | Authenticate or bind a DOKU e-Wallet account before payment |
+| `generate_payment_doku_ewallet` | Charge a DOKU e-Wallet account after successful authentication |
+| `generate_payment_dana` | Generate a DANA e-Wallet payment |
+| `generate_payment_shopeepay` | Generate a ShopeePay e-Wallet payment |
+| `generate_payment_akulaku` | Generate an Akulaku PayLater or installment transaction |
+| `generate_payment_kredivo` | Generate a Kredivo PayLater or installment transaction |
+| `generate_payment_alfagroup` | Generate a payment code for cash payments at Alfamart/Alfamidi |
+| `generate_payment_indomaret` | Generate a payment code for cash payments at Indomaret |
+
+### Transaction Utility (3 tools)
+
+| Tool | Description |
+|---|---|
+| `get_transaction_by_invoice_number` | Retrieve transaction details using an invoice number |
+| `get_transaction_by_customer_name` | Retrieve transaction details using a customer name |
+| `get_transaction_by_date_range` | Retrieve transactions within a specified date range |
+
+### Customer Management (7 tools)
+
+| Tool | Description |
+|---|---|
+| `add_customer` | Create a new customer with name, email, and phone |
+| `update_customer` | Update existing customer details (e.g. phone, email) |
+| `delete_customer` | Remove a customer from your records |
+| `get_customer_by_id` | Retrieve customer details using their unique customer ID |
+| `get_customer_by_name` | Retrieve customer details using full or partial name |
+| `get_customer_by_email` | Retrieve customer details using a registered email address |
+| `get_all_customers` | Retrieve all customers linked to your merchant account |
+
+---
+
+## Tool Selection
+
+When using **Selected** or **All Except** modes, tool names are loaded dynamically from the MCP Server. Click **Refresh** in the dropdown to reload the list whenever your server's tool set changes.
+
+---
+
+## Compatibility
+
+| Requirement | Version |
+|---|---|
+| n8n | ≥ 1.82.0 |
+| Node.js | ≥ 18.x (20.x recommended) |
+| MCP SDK | ≥ 1.25.x |
+| Tested with n8n | 1.97.1 |
+
+---
 
 ## Resources
 
-- [n8n community nodes documentation](https://docs.n8n.io/integrations/#community-nodes)
 - [DOKU MCP Server Documentation](https://developers.doku.com/accept-payments/doku-mcp-server)
 - [DOKU Developer Portal](https://developers.doku.com/)
+- [n8n Community Nodes Documentation](https://docs.n8n.io/integrations/#community-nodes)
 - [Model Context Protocol (MCP)](https://modelcontextprotocol.io/)
+- [npm package](https://www.npmjs.com/package/n8n-nodes-doku-mcp-client)

@@ -2,6 +2,9 @@ import type { INodeTypeBaseDescription, IVersionedNodeType } from 'n8n-workflow'
 import { VersionedNodeType } from 'n8n-workflow';
 
 import { McpClientToolV2 } from './v2/McpClientToolV2.node';
+import { McpClientToolV3 } from './v3/McpClientToolV3.node';
+import { McpClientToolV4 } from './v4/McpClientToolV4.node';
+import { McpClientToolV5 } from './v5/McpClientToolV5.node';
 
 export class McpClientTool extends VersionedNodeType {
 	constructor() {
@@ -13,7 +16,7 @@ export class McpClientTool extends VersionedNodeType {
 				dark: 'file:doku.svg',
 			},
 			group: ['output'],
-			defaultVersion: 2,
+			defaultVersion: 5,
 			description: 'Connect tools to DOKU MCP Server',
 			codex: {
 				categories: ['AI'],
@@ -32,7 +35,10 @@ export class McpClientTool extends VersionedNodeType {
 		};
 
 		const nodeVersions: IVersionedNodeType['nodeVersions'] = {
-			2: new McpClientToolV2(baseDescription)
+			2: new McpClientToolV2(baseDescription),
+			3: new McpClientToolV3(baseDescription),
+			4: new McpClientToolV4(baseDescription),
+			5: new McpClientToolV5(baseDescription),
 		};
 
 		super(nodeVersions, baseDescription);

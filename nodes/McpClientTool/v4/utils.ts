@@ -3,19 +3,9 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { CompatibilityCallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
-import {
-	createResultError,
-	createResultOk,
-	type IDataObject,
-	type Logger,
-	type Result,
-} from 'n8n-workflow';
+import { createResultError, createResultOk, type IDataObject, type Result } from 'n8n-workflow';
 
-import type {
-	McpServerTransport,
-	McpTool,
-	McpToolIncludeMode,
-} from './types';
+import type { McpServerTransport, McpTool, McpToolIncludeMode } from './types';
 
 export async function getAllTools(client: Client, cursor?: string): Promise<McpTool[]> {
 	const { tools, nextCursor } = await client.listTools({ cursor });
@@ -78,31 +68,33 @@ export const createCallTool =
 		client: Client,
 		timeout: number,
 		onError: (error: string) => void,
-		logger?: Logger,
+		getAbortSignal?: () => AbortSignal | undefined,
 	) =>
 	async (args: IDataObject) => {
+		const signal = getAbortSignal?.();
+		if (signal?.aborted) {
+			return 'Execution was cancelled';
+		}
+
 		let result: Awaited<ReturnType<Client['callTool']>>;
 
 		function handleError(error: unknown) {
 			const errorDescription =
 				getErrorDescriptionFromToolCall(error) ?? `Failed to execute tool "${name}"`;
-			logger?.error?.(`DOKU MCP Server Error: Tool "${name}" failed`, { error, args });
 			onError(errorDescription);
 			return errorDescription;
 		}
 
-		// Log the request to DOKU MCP Server
-		logger?.info?.(`DOKU MCP Server Request: Calling tool "${name}"`, {
-			tool: name,
-			arguments: args,
-			timestamp: new Date().toISOString(),
-		});
-
 		try {
-			result = await client.callTool({ name, arguments: args }, CompatibilityCallToolResultSchema, {
-				timeout,
-			});
+			result = await client.callTool(
+				{ name, arguments: args },
+				CompatibilityCallToolResultSchema,
+				{ timeout, signal: getAbortSignal?.() },
+			);
 		} catch (error) {
+			if (getAbortSignal?.()?.aborted) {
+				return 'Execution was cancelled';
+			}
 			return handleError(error);
 		}
 
@@ -110,76 +102,60 @@ export const createCallTool =
 			return handleError(result);
 		}
 
-		// Log successful response from DOKU MCP Server
-		let responseData: unknown;
-		if (result.toolResult !== undefined) {
-			responseData = result.toolResult;
-		} else if (result.content !== undefined) {
-			responseData = result.content;
-		} else {
-			responseData = result;
-		}
-
-		logger?.info?.(`DOKU MCP Server Response: Tool "${name}" succeeded`, {
-			tool: name,
-			response: responseData,
-			timestamp: new Date().toISOString(),
-		});
-
-		if (result.toolResult !== undefined) {
-			return result.toolResult;
-		}
-
-		if (result.content !== undefined) {
-			return result.content;
-		}
-
+		if (result.toolResult !== undefined) return result.toolResult;
+		if (result.content !== undefined) return result.content;
 		return result;
 	};
+
+const MAX_MCP_TOOL_NAME_LENGTH = 64;
+
+export function buildMcpToolName(serverName: string, toolName: string): string {
+	const sanitizedServerName = serverName.replace(/[^a-zA-Z0-9]/g, '_');
+	const fullName = `${sanitizedServerName}_${toolName}`;
+	if (fullName.length <= MAX_MCP_TOOL_NAME_LENGTH) {
+		return fullName;
+	}
+	const maxPrefixLen = MAX_MCP_TOOL_NAME_LENGTH - toolName.length - 1;
+	return maxPrefixLen > 0 ? `${sanitizedServerName.slice(0, maxPrefixLen)}_${toolName}` : toolName;
+}
 
 export function mcpToolToDynamicTool(
 	tool: McpTool,
 	onCallTool: DynamicStructuredToolInput['func'],
 ): DynamicStructuredTool {
-	if (!tool || !tool.name) {
-		throw new Error('Invalid MCP tool: missing name');
-	}
+	// Pass raw JSON Schema so n8n's normalizeToolSchema converts it using its own
+	// zod instance — avoids instanceof mismatches when two zod copies are loaded.
+	// Destructure `type` out before spreading so a Python-serialized "None" from
+	// the server cannot overwrite our explicit `type: "object"`.
+	const { type: _type, ...rest } = (
+		tool.inputSchema && typeof tool.inputSchema === 'object' && !Array.isArray(tool.inputSchema)
+			? tool.inputSchema
+			: {}
+	) as Record<string, unknown>;
 
-	// Ensure tool name is valid (no special characters that could confuse LLM)
-	const toolName = tool.name.trim();
-	if (!toolName) {
-		throw new Error('Invalid MCP tool: empty name');
-	}
+	const schema: Record<string, unknown> = {
+		type: 'object',
+		properties: {},
+		...rest,
+	};
 
-	// Ensure tool has a meaningful description
-	const description = tool.description?.trim() || `Execute ${toolName} tool`;
-
-	// Pass the raw MCP inputSchema (plain JSON object) directly.
-	// n8n's normalizeToolSchema will convert it to Zod using its own zod instance,
-	// which avoids instanceof failures caused by two different zod module instances
-	// being loaded side-by-side (our package vs n8n's package).
-	// MCP spec mandates inputSchema is always type "object"; default to empty object
-	// if the server omits the type or returns nothing.
-	const schema: Record<string, unknown> =
-		tool.inputSchema &&
-		typeof tool.inputSchema === 'object' &&
-		!Array.isArray(tool.inputSchema)
-			? { type: 'object', properties: {}, ...(tool.inputSchema as Record<string, unknown>) }
-			: { type: 'object', properties: {} };
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	return new DynamicStructuredTool({
-		name: toolName,
-		description,
+		name: tool.name,
+		description: tool.description ?? '',
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		schema: schema as any,
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		func: onCallTool as any,
 	});
 }
 
+type ConnectMcpClientError =
+	| { type: 'invalid_url'; error: Error }
+	| { type: 'connection'; error: Error };
 
-function safeCreateUrl(url: string, baseUrl?: string | URL): Result<URL, Error> {
+function safeCreateUrl(url: string): Result<URL, Error> {
 	try {
-		return createResultOk(new URL(url, baseUrl));
+		return createResultOk(new URL(url));
 	} catch (error) {
 		return createResultError(error);
 	}
@@ -187,18 +163,9 @@ function safeCreateUrl(url: string, baseUrl?: string | URL): Result<URL, Error> 
 
 function normalizeAndValidateUrl(input: string): Result<URL, Error> {
 	const withProtocol = !/^https?:\/\//i.test(input) ? `https://${input}` : input;
-	const parsedUrl = safeCreateUrl(withProtocol);
-
-	if (!parsedUrl.ok) {
-		return createResultError(parsedUrl.error);
-	}
-
-	return parsedUrl;
+	return safeCreateUrl(withProtocol);
 }
 
-type ConnectMcpClientError =
-	| { type: 'invalid_url'; error: Error }
-	| { type: 'connection'; error: Error };
 export async function connectMcpClient({
 	headers,
 	serverTransport,
@@ -228,7 +195,7 @@ export async function connectMcpClient({
 			await client.connect(transport);
 			return createResultOk(client);
 		} catch (error) {
-			return createResultError({ type: 'connection', error });
+			return createResultError({ type: 'connection', error: error as Error });
 		}
 	}
 
@@ -239,6 +206,7 @@ export async function connectMcpClient({
 					await fetch(url, {
 						...init,
 						headers: {
+							...(init?.headers as Record<string, string>),
 							...headers,
 							Accept: 'text/event-stream',
 						},
@@ -249,6 +217,6 @@ export async function connectMcpClient({
 		await client.connect(sseTransport);
 		return createResultOk(client);
 	} catch (error) {
-		return createResultError({ type: 'connection', error });
+		return createResultError({ type: 'connection', error: error as Error });
 	}
 }

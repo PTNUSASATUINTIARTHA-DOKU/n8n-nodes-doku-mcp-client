@@ -1,6 +1,6 @@
 {
     "name": "n8n-nodes-doku-mcp-client",
-    "version": "1.0.3",
+    "version": "1.2.0",
     "description": "DOKU MCP Client Official n8n node",
     "license": "MIT",
     "homepage": "https://www.doku.com",
@@ -44,8 +44,9 @@
         "@n8n/node-cli": "*",
         "@types/node": "^24.6.0",
         "eslint": "9.32.0",
+        "n8n-workflow": "^2.3.0",
         "prettier": "3.6.2",
-        "release-it": "^19.0.4",
+        "release-it": "^20.0.0",
         "typescript": "5.9.2"
     },
     "peerDependencies": {
@@ -55,10 +56,10 @@
         "change-case": "4.1.2"
     },
     "dependencies": {
-        "@langchain/core": "^0.3.78",
-        "@modelcontextprotocol/sdk": "^1.18.2",
-        "@n8n/client-oauth2": "^0.30.0",
-        "langchain": "^0.3.35",
+        "@langchain/core": "^1.1.0",
+        "@modelcontextprotocol/sdk": "^1.25.1",
+        "@n8n/client-oauth2": "^1.1.0",
+        "langchain": "^1.1.1",
         "oauth-1.0a": "^2.2.6"
     }
 }

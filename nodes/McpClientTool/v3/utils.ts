@@ -77,11 +77,13 @@ export const createCallTool =
 		name: string,
 		client: Client,
 		timeout: number,
+		maxRetries: number = 2,
+		backoffMultiplier: number = 1.5,
 		onError: (error: string) => void,
 		logger?: Logger,
 	) =>
 	async (args: IDataObject) => {
-		let result: Awaited<ReturnType<Client['callTool']>>;
+		let lastError: unknown;
 
 		function handleError(error: unknown) {
 			const errorDescription =
@@ -91,50 +93,45 @@ export const createCallTool =
 			return errorDescription;
 		}
 
-		// Log the request to DOKU MCP Server
-		logger?.info?.(`DOKU MCP Server Request: Calling tool "${name}"`, {
-			tool: name,
-			arguments: args,
-			timestamp: new Date().toISOString(),
-		});
+		logger?.info?.(`DOKU MCP Server Request: Calling tool "${name}"`, { tool: name, arguments: args });
 
-		try {
-			result = await client.callTool({ name, arguments: args }, CompatibilityCallToolResultSchema, {
-				timeout,
-			});
-		} catch (error) {
-			return handleError(error);
+		for (let attempt = 0; attempt <= maxRetries; attempt++) {
+			let result: Awaited<ReturnType<Client['callTool']>>;
+
+			try {
+				result = await client.callTool({ name, arguments: args }, CompatibilityCallToolResultSchema, {
+					timeout,
+				});
+			} catch (error) {
+				lastError = error;
+				if (attempt < maxRetries) {
+					const delay = Math.pow(backoffMultiplier, attempt) * 1000;
+					logger?.warn?.(`Tool "${name}" attempt ${attempt + 1} threw error, retrying in ${delay}ms...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
+					continue;
+				}
+				return handleError(error);
+			}
+
+			if (result.isError) {
+				lastError = result;
+				if (attempt < maxRetries) {
+					const delay = Math.pow(backoffMultiplier, attempt) * 1000;
+					logger?.warn?.(`Tool "${name}" attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+					await new Promise((resolve) => setTimeout(resolve, delay));
+					continue;
+				}
+				return handleError(lastError);
+			}
+
+			logger?.info?.(`DOKU MCP Server Response: Tool "${name}" succeeded`, { tool: name });
+
+			if (result.toolResult !== undefined) return result.toolResult;
+			if (result.content !== undefined) return result.content;
+			return result;
 		}
 
-		if (result.isError) {
-			return handleError(result);
-		}
-
-		// Log successful response from DOKU MCP Server
-		let responseData: unknown;
-		if (result.toolResult !== undefined) {
-			responseData = result.toolResult;
-		} else if (result.content !== undefined) {
-			responseData = result.content;
-		} else {
-			responseData = result;
-		}
-
-		logger?.info?.(`DOKU MCP Server Response: Tool "${name}" succeeded`, {
-			tool: name,
-			response: responseData,
-			timestamp: new Date().toISOString(),
-		});
-
-		if (result.toolResult !== undefined) {
-			return result.toolResult;
-		}
-
-		if (result.content !== undefined) {
-			return result.content;
-		}
-
-		return result;
+		return handleError(lastError);
 	};
 
 export function mcpToolToDynamicTool(
@@ -176,6 +173,9 @@ export function mcpToolToDynamicTool(
 	});
 }
 
+type ConnectMcpClientError =
+	| { type: 'invalid_url'; error: Error }
+	| { type: 'connection'; error: Error };
 
 function safeCreateUrl(url: string, baseUrl?: string | URL): Result<URL, Error> {
 	try {
@@ -196,9 +196,9 @@ function normalizeAndValidateUrl(input: string): Result<URL, Error> {
 	return parsedUrl;
 }
 
-type ConnectMcpClientError =
-	| { type: 'invalid_url'; error: Error }
-	| { type: 'connection'; error: Error };
+/**
+ * v3: Enhanced connectMcpClient with MCP v1.2 client capabilities
+ */
 export async function connectMcpClient({
 	headers,
 	serverTransport,
@@ -211,6 +211,7 @@ export async function connectMcpClient({
 	headers?: Record<string, string>;
 	name: string;
 	version: number;
+	clientCapabilities?: Record<string, unknown>;
 }): Promise<Result<Client, ConnectMcpClientError>> {
 	const endpoint = normalizeAndValidateUrl(endpointUrl);
 
@@ -218,7 +219,11 @@ export async function connectMcpClient({
 		return createResultError({ type: 'invalid_url', error: endpoint.error });
 	}
 
-	const client = new Client({ name, version: version.toString() }, { capabilities: {} });
+	// v1.2+: Enhanced client initialization (MCP SDK 1.25+)
+	const client = new Client(
+		{ name, version: version.toString() },
+		{ capabilities: {} }
+	);
 
 	if (serverTransport === 'httpStreamable') {
 		try {

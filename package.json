@@ -58,7 +58,7 @@
   },
   "dependencies": {
     "@langchain/core": "^1.1.0",
-    "@modelcontextprotocol/sdk": "^1.25.1",
+    "@modelcontextprotocol/sdk": "^1.32.0",
     "@n8n/client-oauth2": "^1.1.0",
     "langchain": "^1.1.1",
     "oauth-1.0a": "^2.2.6"
